@@ -17,10 +17,11 @@ SUMMARY_WORDS = ("Test Files", "Tests ", "Duration", "FAIL", "AssertionError", "
 
 def npm(*args, folder):
     executable = shutil.which("npm") or "npm"
-    return subprocess.run([executable, *args], cwd=folder, capture_output=True, text=True)
+    return subprocess.run([executable, *args], cwd=folder, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     if len(sys.argv) != 2:
         sys.exit(__doc__)
     folder = Path(sys.argv[1])
@@ -38,7 +39,7 @@ def main():
     if angular:
         result = npm("test", "--", "--watch=false", folder=folder)
     else:
-        result = subprocess.run([shutil.which("npx") or "npx", "vitest", "run"], cwd=folder, capture_output=True, text=True)
+        result = subprocess.run([shutil.which("npx") or "npx", "vitest", "run"], cwd=folder, capture_output=True, text=True, encoding="utf-8", errors="replace")
     text = (result.stdout + result.stderr).strip().splitlines()
     summary = [line for line in text if any(word in line for word in SUMMARY_WORDS)]
     print("\n".join(summary[-TAIL_LINES:] or text[-TAIL_LINES:]))
