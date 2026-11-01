@@ -75,6 +75,11 @@ def ours(name):
 def cmd_up(a):
     check_name(a.name)
     probe = docker("image", "inspect", a.image)
+    if probe.returncode != 0 and "no such image" in (probe.stderr or "").lower():
+        # Docker Desktop's containerd image store can fail `image inspect` by name for an image that is listed and runs; the listing is the second opinion
+        listed = docker("images", "-q", a.image)
+        if listed.returncode == 0 and listed.stdout.strip():
+            probe = listed
     if probe.returncode != 0:
         if "no such image" in (probe.stderr or "").lower():
             print(f"image {a.image} is not on this machine. This tool does not pull. If the user agrees to the download, run: docker pull {a.image}", file=sys.stderr)
@@ -90,7 +95,7 @@ def cmd_up(a):
     pw = os.environ.get("THROWAWAY_DB_PASSWORD") or secrets.token_urlsafe(12)
     pwd_file(a.name).write_text(pw, encoding="utf-8")
     server_args = list(a.server_arg) + (["--skip-log-bin"] if a.skip_log_bin else [])
-    r = docker("run", "-d", "--rm", "--name", a.name, "--label", LABEL, "-e", "MYSQL_ROOT_PASSWORD",
+    r = docker("run", "-d", "--rm", "--pull=never", "--name", a.name, "--label", LABEL, "-e", "MYSQL_ROOT_PASSWORD",
                "-p", f"127.0.0.1:{a.port}:3306", a.image, *server_args, extra_env={"MYSQL_ROOT_PASSWORD": pw})
     if r.returncode != 0:
         print(r.stderr.strip(), file=sys.stderr)
