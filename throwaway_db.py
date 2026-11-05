@@ -1,6 +1,7 @@
 """Starts, uses and removes a throwaway MySQL server in a Docker container, so a test never touches a real database or someone else's container.
 
   python throwaway_db.py up                                  start zz-mysql on 127.0.0.1:3307 (image mysql:8.4) and wait until it answers
+  python throwaway_db.py up --name zz-maria --port 3309 --image mariadb:10.11     (a MariaDB server; the tool uses the image's `mariadb` client)
   python throwaway_db.py up --name zz-trg --port 3308 --skip-log-bin      (lets a login without SUPER create triggers)
   python throwaway_db.py up --server-arg=--lower-case-table-names=1       (any other server option: write it with `=`)
   python throwaway_db.py sql zz-mysql -e "SELECT VERSION()"
@@ -61,6 +62,16 @@ def check_name(name):
         sys.exit(2)
 
 
+def client_for(image):
+    # the MariaDB images from 11.0 on no longer carry a `mysql` command
+    return "mariadb" if "mariadb" in image.lower() else "mysql"
+
+
+def image_of(name):
+    r = docker("inspect", "-f", "{{.Config.Image}}", name)
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
 def port_in_use(port):
     with socket.socket() as s:
         s.settimeout(0.5)
@@ -102,7 +113,7 @@ def cmd_up(a):
         return r.returncode
     deadline = time.time() + a.wait
     while time.time() < deadline:
-        ping = docker("exec", "-e", "MYSQL_PWD", a.name, "mysql", "-h", "127.0.0.1", "-P", "3306", "-uroot", "-e", "SELECT 1", extra_env={"MYSQL_PWD": pw})
+        ping = docker("exec", "-e", "MYSQL_PWD", a.name, client_for(a.image), "-h", "127.0.0.1", "-P", "3306", "-uroot", "-e", "SELECT 1", extra_env={"MYSQL_PWD": pw})
         if ping.returncode == 0:
             print(f"ready: {a.name} on 127.0.0.1:{a.port} ({a.image}); root password in {pwd_file(a.name)}")
             return 0
@@ -120,7 +131,7 @@ def cmd_sql(a):
     if bool(a.e) == bool(a.file):
         print("give exactly one of -e SQL or --file F.sql", file=sys.stderr)
         return 2
-    base = ["exec", "-i", "-e", "MYSQL_PWD", a.name, "mysql", f"-u{a.user}"]
+    base = ["exec", "-i", "-e", "MYSQL_PWD", a.name, client_for(image_of(a.name)), f"-u{a.user}"]
     if a.db:
         base.append(a.db)
     if a.e:
